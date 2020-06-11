@@ -1,0 +1,99 @@
+---
+title: "Untitled"
+author: "Okjun007"
+date: "6/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Loading and Cleaning
+
+```{r}
+library(caret); library(rpart); library(rpart.plot)
+library(RColorBrewer); library(rattle); library(corrplot)
+library(randomForest); library(gbm)
+setwd("/Users/jun/Desktop/")
+training <- read.csv('./pml-training.csv', header=T)
+validation <- read.csv('./pml-testing.csv', header=T)
+dim(training)
+dim(validation)
+```
+
+## Remove variables that are mostly NA
+
+```{r}
+AllNA    <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[, AllNA==FALSE]
+validation  <- validation[, AllNA==FALSE]
+dim(training)
+dim(validation)
+
+training <- training[, -c(1:7)]
+validData <- validation[, -c(1:7)]
+
+set.seed(111) 
+inTrain <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+trainData <- training[inTrain, ]
+testData <- training[-inTrain, ]
+dim(trainData)
+dim(testData)
+
+NZV <- nearZeroVar(trainData)
+trainData <- trainData[, -NZV]
+testData  <- testData[, -NZV]
+dim(trainData)
+dim(testData)
+testData$classe <- as.factor(testData$classe)
+```
+
+## 1. Prediction with classification trees
+```{r}
+modFitDecTree <- rpart(classe ~ ., data=trainData, method="class")
+fancyRpartPlot(modFitDecTree)
+
+predictDecTree <- predict(modFitDecTree, newdata=testData, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, testData$classe)
+confMatDecTree
+plot(confMatDecTree$table, col = confMatDecTree$byClass, 
+     main = paste("Decision Tree - Accuracy =",
+                  round(confMatDecTree$overall['Accuracy'], 4)))
+```
+
+## 2. Prediction with Random Forest
+```{r}
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=trainData, method="rf",
+                          trControl=controlRF)
+modFitRandForest$finalModel
+predictRandForest <- predict(modFitRandForest, newdata=testData)
+confMatRandForest <- confusionMatrix(predictRandForest, testData$classe)
+confMatRandForest
+plot(confMatRandForest$table, col = confMatRandForest$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(confMatRandForest$overall['Accuracy'], 4)))
+```
+
+
+## 3. Prediction with Generalized Boosted Model
+```{r}
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=trainData, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+modFitGBM$finalModel
+predictGBM <- predict(modFitGBM, newdata=testData)
+confMatGBM <- confusionMatrix(predictGBM, testData$classe)
+confMatGBM
+plot(confMatGBM$table, col = confMatGBM$byClass, 
+     main = paste("GBM - Accuracy =", round(confMatGBM$overall['Accuracy'], 4)))
+```
+
+
+## Applying the Random Forest model to the validation data
+```{r}
+predictTEST <- predict(modFitRandForest, newdata=validation)
+predictTEST
+```
+
